@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Impact-Hurdle Carry Model</title>
+<meta name="description" content="How likely is Rubio-style carry to pay out when it sits behind impact targets? A Monte Carlo fund simulator.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #111111; --ink-soft: #4a4a4a; --muted: #7a7a7a; --rule: #e4e4e4;
+    --paper: #ffffff; --tint: #f6f5f2; --accent: #7a1f2b; --accent-tint: #f4e9ea;
+    --serif-display: "Playfair Display", Georgia, "Times New Roman", serif;
+    --serif-text: "Source Serif 4", Georgia, "Times New Roman", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font-family: var(--serif-text); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  a { color: var(--ink); text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--ink); }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  header.top { padding: 56px 0 28px; border-bottom: 1px solid var(--ink); }
+  .eyebrow { font-family: var(--serif-display); font-style: italic; color: var(--muted); font-size: 15px; margin: 0 0 6px; }
+  h1 { font-family: var(--serif-display); font-weight: 700; font-size: clamp(34px, 6vw, 54px); line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.01em; }
+  .lede { max-width: 720px; color: var(--ink-soft); font-size: 18px; margin: 0; }
+  .links { margin-top: 18px; display: flex; gap: 22px; flex-wrap: wrap; font-size: 15px; }
+  .links a { font-family: var(--serif-display); font-style: italic; }
+
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 48px; padding: 36px 0 64px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; gap: 28px; } .wrap { padding: 0 16px; } }
+
+  aside { align-self: start; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; padding-right: 6px; }
+  @media (max-width: 860px) { aside { position: static; max-height: none; overflow: visible; } }
+  h2 { font-family: var(--serif-display); font-weight: 600; font-size: 22px; margin: 0 0 4px; }
+  h3 { font-family: var(--serif-display); font-weight: 600; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin: 26px 0 8px; }
+  .preset, .field select { font: inherit; font-size: 15px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); border-radius: 0; }
+  .preset { width: 100%; padding: 9px 10px; }
+  .preset-note { font-size: 13px; color: var(--muted); margin: 6px 0 0; min-height: 1.2em; }
+  .field { display: grid; grid-template-columns: 1fr 96px; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
+  .field.pair { grid-template-columns: 1fr 64px 12px 64px; }
+  .field.wide { grid-template-columns: 1fr 150px; }
+  .field label { font-size: 14.5px; }
+  .field small { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
+  .field input { width: 100%; font: inherit; font-size: 15px; text-align: right; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ink); padding: 2px 0; font-variant-numeric: tabular-nums; }
+  .field input:focus { outline: none; border-bottom-color: var(--ink); }
+  .field select { padding: 3px 4px; font-size: 14px; border-color: var(--rule); width: 100%; }
+  .field .dash { text-align: center; color: var(--muted); }
+  .runs { display: flex; gap: 8px; align-items: center; margin-top: 18px; font-size: 13px; color: var(--muted); }
+
+  .verdict { font-family: var(--serif-display); font-size: clamp(22px, 3vw, 28px); line-height: 1.3; margin: 0 0 6px; }
+  .verdict em { font-style: italic; color: var(--accent); }
+  .verdict-sub { color: var(--ink-soft); margin: 0 0 26px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--ink); border-left: 1px solid var(--rule); }
+  @media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+  .tile { padding: 14px 16px 16px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .tile .k { font-size: 13px; color: var(--muted); }
+  .tile .v { font-family: var(--serif-display); font-size: 30px; font-weight: 600; line-height: 1.15; font-variant-numeric: lining-nums tabular-nums; }
+  .tile .s { font-size: 12.5px; color: var(--muted); }
+  .tile.key .v { color: var(--accent); }
+
+  figure { margin: 38px 0 0; }
+  figure h2 { margin-bottom: 2px; }
+  figcaption { color: var(--muted); font-size: 14px; margin: 0 0 10px; max-width: 700px; }
+  svg text { font-family: var(--serif-text); fill: var(--ink-soft); font-size: 11px; }
+  svg .lbl { fill: var(--ink); font-size: 12px; }
+  svg .big { font-family: var(--serif-display); font-size: 20px; font-weight: 600; fill: var(--ink); }
+  .legend { display: flex; gap: 18px; font-size: 13px; color: var(--ink-soft); margin-top: 4px; flex-wrap: wrap; }
+  .sw { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; }
+  .note { font-size: 14px; color: var(--ink-soft); max-width: 700px; }
+  .callout { border-left: 2px solid var(--accent); padding: 4px 0 4px 16px; margin: 14px 0 0; }
+  .callout p { margin: 0 0 6px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--rule); font-size: 15px; }
+  th { font-family: var(--serif-display); font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--ink); }
+  td.num, th.num { text-align: right; }
+
+  .busy { opacity: 0.45; transition: opacity 0.15s; }
+  footer { border-top: 1px solid var(--ink); padding: 22px 0 48px; color: var(--muted); font-size: 13.5px; }
+  footer p { max-width: 780px; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">An impact venture fund model</p>
+    <h1>The Impact-Hurdle Carry Model</h1>
+    <p class="lede">Some impact funds pay their team's carry only if the portfolio hits its impact targets first
+      and the fund makes money second. This model plays out 20,000 possible funds of 30 start-ups each and asks
+      how often a carry structure like Rubio Impact Ventures' Aligned Impact Model actually pays out.</p>
+    <nav class="links">
+      <a href="https://angaddc.github.io/stochastic_vc_modelling/">← The Stochastic VC Method (the deal model this builds on)</a>
+      <a href="https://rubio.vc/impact/">Rubio's Aligned Impact Model →</a>
+    </nav>
+  </header>
+
+  <main>
+    <aside>
+      <h2>Inputs</h2>
+      <select class="preset" id="preset" aria-label="Load a scenario">
+        <option value="base">Rubio-style fund (base case)</option>
+        <option value="unlinked">Impact unrelated to revenue</option>
+        <option value="strict">80% impact hurdle</option>
+        <option value="capped">Scores capped at 100% per company</option>
+      </select>
+      <p class="preset-note" id="preset-note"></p>
+
+      <h3>The fund</h3>
+      <div class="field"><label for="fundSize">Fund size <small>€M committed by investors</small></label><input id="fundSize" type="number" step="5" min="5"></div>
+      <div class="field"><label for="nCos">Companies <small>number of deals, equal cheques</small></label><input id="nCos" type="number" step="1" min="5" max="60"></div>
+      <div class="field"><label for="fee">Management fee <small>% of the fund a year, for 10 years</small></label><input id="fee" type="number" step="0.25" min="0" max="3"></div>
+      <div class="field"><label for="carry">Carry <small>% of the fund's profit</small></label><input id="carry" type="number" step="1" min="0" max="40"></div>
+
+      <h3>Each deal</h3>
+      <div class="field"><label for="post">Entry post-money <small>€M, typical seed / Series A</small></label><input id="post" type="number" step="1" min="1"></div>
+      <div class="field"><label for="pFail">Chance of failure <small>% that die before a real exit</small></label><input id="pFail" type="number" step="1" min="0" max="95"></div>
+      <div class="field"><label for="recovery">Recovery if it fails <small>% of the cheque returned</small></label><input id="recovery" type="number" step="1" min="1" max="90"></div>
+      <div class="field pair"><label>Exit-year revenue <small>€M, P10–P90</small></label><input id="revP10" type="number" step="1" min="0.1" aria-label="Revenue P10"><span class="dash">–</span><input id="revP90" type="number" step="1" min="0.2" aria-label="Revenue P90"></div>
+      <div class="field pair"><label>Exit multiple <small>EV / revenue, P10–P90</small></label><input id="multP10" type="number" step="0.5" min="0.1" aria-label="Multiple P10"><span class="dash">–</span><input id="multP90" type="number" step="0.5" min="0.2" aria-label="Multiple P90"></div>
+      <div class="field"><label for="rho">Revenue ↔ multiple link <small>correlation, −0.9 to 0.9</small></label><input id="rho" type="number" step="0.1" min="-0.9" max="0.9"></div>
+      <div class="field"><label for="vintage">Shared market luck <small>share of multiple risk common to all deals, 0–0.9</small></label><input id="vintage" type="number" step="0.1" min="0" max="0.9"></div>
+      <div class="field pair"><label>Future funding rounds <small>range</small></label><input id="roundsMin" type="number" step="1" min="0"><span class="dash">–</span><input id="roundsMax" type="number" step="1" min="0"></div>
+      <div class="field"><label for="dilution">Dilution per round <small>% of the company sold, average</small></label><input id="dilution" type="number" step="1" min="1" max="60"></div>
+
+      <h3>Impact</h3>
+      <div class="field pair"><label>KPI achievement <small>actual ÷ target, P10–P90 (1 = on target)</small></label><input id="impP10" type="number" step="0.05" min="0.01" aria-label="Achievement P10"><span class="dash">–</span><input id="impP90" type="number" step="0.1" min="0.02" aria-label="Achievement P90"></div>
+      <div class="field"><label for="impRho">Impact ↔ revenue link <small>correlation, 0 to 0.95</small></label><input id="impRho" type="number" step="0.1" min="0" max="0.95"></div>
+      <div class="field"><label for="failKeep">Impact kept if it fails <small>% of its score a failed company keeps</small></label><input id="failKeep" type="number" step="5" min="0" max="100"></div>
+      <div class="field"><label for="pDrift">KPI turns out wrong <small>% chance per company; score halved</small></label><input id="pDrift" type="number" step="1" min="0" max="100"></div>
+      <div class="field wide"><label for="cap">Cap per company <small>can one star carry the fund?</small></label><select id="cap"><option value="0">No cap</option><option value="1">Capped at 100%</option></select></div>
+
+      <h3>Carry rules</h3>
+      <div class="field"><label for="hurdle">Impact hurdle <small>% fund score needed (Rubio: 60%)</small></label><input id="hurdle" type="number" step="5" min="5" max="200"></div>
+      <div class="field wide"><label for="rule">Impact gate <small>how the score unlocks carry</small></label><select id="rule"><option value="hard">All or nothing</option><option value="bands">EIF bands</option><option value="prorata">Pro rata</option></select></div>
+      <div class="field"><label for="money">Money hurdle <small>net TVPI needed (Rubio: 2×)</small></label><input id="money" type="number" step="0.1" min="0.5" max="6"></div>
+
+      <h3>Mid-life check</h3>
+      <div class="field"><label for="s0">Impact score today <small>% (Rubio Fund II, end 2025: 40%)</small></label><input id="s0" type="number" step="5" min="0" max="300"></div>
+      <div class="field"><label for="elapsed">Target period gone <small>% of the 3-year windows used up</small></label><input id="elapsed" type="number" step="5" min="0" max="95"></div>
+
+      <div class="runs" id="runs">20,000 simulated funds</div>
+    </aside>
+
+    <section id="results" aria-live="polite">
+      <p class="verdict" id="verdict">&nbsp;</p>
+      <p class="verdict-sub" id="verdict-sub">&nbsp;</p>
+
+      <div class="tiles">
+        <div class="tile key"><div class="k">Chance the carry pays</div><div class="v" id="t-pays">–</div><div class="s">both gates passed</div></div>
+        <div class="tile"><div class="k">Money gate passed</div><div class="v" id="t-money">–</div><div class="s" id="t-money-s">net TVPI at or above the hurdle</div></div>
+        <div class="tile"><div class="k">Impact gate passed</div><div class="v" id="t-impact">–</div><div class="s" id="t-impact-s">fund score at or above the hurdle</div></div>
+        <div class="tile"><div class="k">Impact met, when money is</div><div class="v" id="t-align">–</div><div class="s" id="t-align-s">&nbsp;</div></div>
+        <div class="tile"><div class="k">Expected carry</div><div class="v" id="t-carry">–</div><div class="s" id="t-carry-s">&nbsp;</div></div>
+        <div class="tile"><div class="k">Typical fund</div><div class="v" id="t-tvpi">–</div><div class="s">median net TVPI</div></div>
+      </div>
+
+      <figure>
+        <h2>Four kinds of fund</h2>
+        <figcaption>Each dot is one simulated fund: how much money it made for investors (across) and how close it came to its impact targets (up). Only funds in the top-right box pay carry.</figcaption>
+        <svg id="scatter" viewBox="0 0 760 420" width="100%" role="img" aria-label="Simulated funds by net TVPI and impact score"></svg>
+        <div class="legend"><span><span class="sw" style="background:#7a1f2b"></span>Carry paid</span><span><span class="sw" style="background:#a9a9a9"></span>Carry goes to charity</span><span>2,500 of the 20,000 funds shown; shares are from all 20,000</span></div>
+      </figure>
+
+      <figure>
+        <h2>Where the carry goes</h2>
+        <figcaption>Expected carry per fund, in €M. A normal fund pays carry on any profit. The money gate removes it below the TVPI hurdle; the impact gate removes more.</figcaption>
+        <svg id="bridge" viewBox="0 0 760 190" width="100%" role="img" aria-label="Expected carry: normal fund, after the money gate, after the impact gate"></svg>
+      </figure>
+
+      <figure>
+        <h2>What moves the answer</h2>
+        <figcaption>Chance the carry pays when one input moves to a low or high value, all else as set. Longest bars matter most.</figcaption>
+        <svg id="tornado" viewBox="0 0 760 360" width="100%" role="img" aria-label="Sensitivity of the chance carry pays"></svg>
+      </figure>
+
+      <figure>
+        <h2>Mid-life check</h2>
+        <figcaption>A fund partway through its targets. The part still to come is drawn from the model, assuming targets build up at an even pace (an assumption; Rubio does not publish how its targets accrue).</figcaption>
+        <div class="callout" id="midlife"><p>&nbsp;</p></div>
+      </figure>
+
+      <figure>
+        <h2>Is the money side realistic?</h2>
+        <figcaption>The model's simulated funds against published venture fund returns. If the model is far more generous than the benchmarks, every impact result above is too.</figcaption>
+        <table>
+          <thead><tr><th>Measure</th><th class="num">This model</th><th class="num">Benchmark</th><th>Source</th></tr></thead>
+          <tbody id="bench"></tbody>
+        </table>
+      </figure>
+    </section>
+  </main>
+
+  <footer>
+    <p>How it works: each company's money outcome comes from the Stochastic VC Method (failure as a weighted coin flip,
+      lognormal revenue and exit multiple, dilution per round), with a shared market shock so funds have good and bad
+      vintages. Each company has 1–3 impact KPIs scored as actual ÷ target. The scores move with the company's revenue
+      shock by the impact link and are cut if the company fails or its KPI turns out wrong. The fund score is the
+      cost-weighted average, as in the European Investment Fund method Rubio's model comes from. Carry is 20% of
+      profit over paid-in capital (no preferred return), then multiplied by the two gates.</p>
+    <p>Rubio's carry terms are only partly public: it publishes the 100% impact link, the 60% fund hurdle (80–100% on its
+      main site), the 2× net money hurdle and that forfeited carry goes to charity, but not its carry rate, waterfall
+      or whether the gate is all-or-nothing. Those are set here as adjustable assumptions. Sources:
+      <a href="https://rubio.vc/impact/">Rubio, Aligned Impact Model</a>;
+      <a href="https://impactreport.rubio.vc/impact-methodology/">Rubio impact methodology</a>;
+      <a href="https://deutsche-startups.de/app/uploads/2024/12/22_11_24_steering_group_report_final.pdf">Impact Accountability in VC (EIF Gamma Model)</a>.
+      Illustrative only, not investment advice. Rubio Impact Ventures has no involvement with this page.</p>
+  </footer>
+</div>
+
+<script id="engine">
+// engine.js: fund-level impact-hurdle simulator (Rubio-style "Aligned Impact Model").
+// Extends the Stochastic VC Method engine from one deal to a fund of N deals, adds an impact
+// score per company, and passes each simulated fund through an impact gate and a money gate.
+// Money in EUR millions. Runs in the browser (window.ImpactEngine) and under Node (module.exports).
+
+(function (root) {
+  "use strict";
+
+  // ---- Random numbers (same generators as the Stochastic VC Method engine) -----
+  function rng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function normal(u) {
+    let u1 = u(); while (u1 <= 1e-12) u1 = u();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u());
+  }
+  function gamma(u, k) {
+    if (k < 1) return gamma(u, k + 1) * Math.pow(u(), 1 / k);
+    const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+    for (;;) {
+      let x, v;
+      do { x = normal(u); v = 1 + c * x; } while (v <= 0);
+      v = v * v * v;
+      const w = u();
+      if (w < 1 - 0.0331 * x * x * x * x) return d * v;
+      if (Math.log(w) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+    }
+  }
+  function beta(u, a, b) { const x = gamma(u, a), y = gamma(u, b); return x / (x + y); }
+
+  const Z90 = 1.2815515655446004;
+  function lnormFromRange(p10, p90) {
+    return { mu: (Math.log(p10) + Math.log(p90)) / 2, sd: (Math.log(p90) - Math.log(p10)) / (2 * Z90) };
+  }
+  function discrete(u01, values, probs) {
+    const tot = probs.reduce((s, p) => s + p, 0);
+    let c = 0;
+    for (let i = 0; i < values.length; i++) { c += probs[i] / tot; if (u01 < c) return values[i]; }
+    return values[values.length - 1];
+  }
+  function triangularWeights(lo, hi) {
+    const vals = [], w = [], mid = (lo + hi) / 2;
+    for (let v = lo; v <= hi; v++) { vals.push(v); w.push(1 + (hi - lo) / 2 - Math.abs(v - mid)); }
+    return { vals, w };
+  }
+
+  // ---- Step 1: draw the random numbers once (common random numbers) -----------------
+  // Every scenario and every tornado bar is evaluated on these same draws, so differences
+  // between results come from the inputs, not from luck.
+  // D: { nFunds, nCos, recoveryMean, roundsMin, roundsMax, dilutionMean, seed }
+  function draw(D) {
+    const nF = D.nFunds, nC = D.nCos, N = nF * nC, u = rng(D.seed || 42);
+    const zRev = new Float32Array(N), eMult = new Float32Array(N), uFail = new Float32Array(N);
+    const recovery = new Float32Array(N), retention = new Float32Array(N), uDrift = new Float32Array(N);
+    const nKpi = new Uint8Array(N), eK = new Float32Array(N * 3), zMkt = new Float32Array(nF);
+    const rec = { a: D.recoveryMean * 10, b: (1 - D.recoveryMean) * 10 };
+    const dil = { a: D.dilutionMean * 20, b: (1 - D.dilutionMean) * 20 };
+    const rnd = triangularWeights(D.roundsMin, D.roundsMax);
+    for (let f = 0; f < nF; f++) zMkt[f] = normal(u);
+    for (let i = 0; i < N; i++) {
+      zRev[i] = normal(u);
+      eMult[i] = normal(u);
+      uFail[i] = u();
+      recovery[i] = beta(u, rec.a, rec.b);
+      const k = discrete(u(), rnd.vals, rnd.w);
+      let r = 1; for (let j = 0; j < k; j++) r *= 1 - beta(u, dil.a, dil.b);
+      retention[i] = r;
+      uDrift[i] = u();
+      nKpi[i] = 1 + Math.floor(u() * 3);                 // 1, 2 or 3 impact KPIs
+      for (let k2 = 0; k2 < 3; k2++) eK[3 * i + k2] = normal(u);
+    }
+    return { nF, nC, N, zRev, eMult, uFail, recovery, retention, uDrift, nKpi, eK, zMkt, key: drawKey(D) };
+  }
+  function drawKey(D) {
+    return [D.nFunds, D.nCos, D.recoveryMean, D.roundsMin, D.roundsMax, D.dilutionMean, D.seed].join("|");
+  }
+
+  // ---- Gate rules: share of carry the impact score unlocks, g(IM) ----------------------
+  function gateShare(rule, im, h) {
+    if (rule === "bands") {                     // EIF: nothing below h, 50%→100% across h…h+0.2, full above
+      if (im < h) return 0;
+      if (im >= h + 0.2) return 1;
+      return 0.5 + 0.5 * (im - h) / 0.2;
+    }
+    if (rule === "prorata") return Math.min(1, im / h);   // Gamma Model example
+    return im >= h ? 1 : 0;                                // hard gate (Rubio, as described)
+  }
+
+  // ---- Step 2: evaluate a set of inputs on the stored draws ---------------------------
+  // P: { fundSize, feeRate, feeYears, carry, post, pFail, revP10, revP90, multP10, multP90, rho,
+  //      vintage, impP10, impP90, impRho, failKeep, pDrift, driftCut, cap, hurdle, rule, moneyHurdle,
+  //      keepFunds }
+  function evaluate(R, P) {
+    const nF = R.nF, nC = R.nC;
+    const invested = P.fundSize * Math.max(0, 1 - P.feeRate * P.feeYears);
+    const cheque = invested / nC, own = cheque / P.post;
+    const rev = lnormFromRange(P.revP10, P.revP90), mult = lnormFromRange(P.multP10, P.multP90);
+    const imp = lnormFromRange(P.impP10, P.impP90);
+    const rho = P.rho, sR = Math.sqrt(1 - rho * rho);
+    const v = P.vintage, sV = Math.sqrt(1 - v), qV = Math.sqrt(v);
+    const ri = P.impRho, sI = Math.sqrt(1 - ri * ri);
+
+    const tvpiNet = new Float32Array(nF), im = new Float32Array(nF);
+    const carryStd = new Float32Array(nF), carryPaid = new Float32Array(nF), share = new Float32Array(nF);
+    for (let f = 0; f < nF; f++) {
+      let dist = 0, impSum = 0;
+      const zm = R.zMkt[f];
+      for (let c = 0; c < nC; c++) {
+        const i = f * nC + c;
+        const z1 = R.zRev[i];
+        const w = qV * zm + sV * R.eMult[i];             // multiple shock: common market part + own part
+        const z2 = rho * z1 + sR * w;
+        const failed = R.uFail[i] < P.pFail;
+        // money
+        dist += failed ? R.recovery[i] * cheque
+                       : own * R.retention[i] * Math.exp(rev.mu + rev.sd * z1) * Math.exp(mult.mu + mult.sd * z2);
+        // impact: average of the company's KPIs, each = achieved / target
+        const k = R.nKpi[i];
+        let s = 0;
+        for (let j = 0; j < k; j++) s += Math.exp(imp.mu + imp.sd * (ri * z1 + sI * R.eK[3 * i + j]));
+        s /= k;
+        if (failed) s *= P.failKeep;
+        if (R.uDrift[i] < P.pDrift) s *= P.driftCut;
+        if (P.cap) s = Math.min(s, 1);
+        impSum += s;                                     // equal cheques → cost-weighted = simple mean
+      }
+      const profit = dist - P.fundSize;
+      const cStd = P.carry * Math.max(profit, 0);
+      const tv = (dist - cStd) / P.fundSize;
+      const m = impSum / nC;
+      const g = (tv >= P.moneyHurdle ? 1 : 0) * gateShare(P.rule, m, P.hurdle);
+      tvpiNet[f] = tv; im[f] = m; carryStd[f] = cStd; carryPaid[f] = cStd * g; share[f] = g;
+    }
+    return summarise({ tvpiNet, im, carryStd, carryPaid, share }, P, nF);
+  }
+
+  function quantile(arr, p) {
+    const a = Float64Array.from(arr).sort();
+    return a[Math.min(a.length - 1, Math.max(0, Math.ceil(p * a.length) - 1))];
+  }
+
+  function summarise(X, P, nF) {
+    let money = 0, impact = 0, both = 0, anyStd = 0, anyPaid = 0, eStd = 0, ePaid = 0, eMoneyOnly = 0;
+    let q = { both: 0, moneyOnly: 0, impactOnly: 0, neither: 0 };
+    for (let f = 0; f < nF; f++) {
+      const mOk = X.tvpiNet[f] >= P.moneyHurdle, iOk = X.im[f] >= P.hurdle;
+      if (mOk) money++; if (iOk) impact++; if (mOk && iOk) both++;
+      if (X.carryStd[f] > 0) anyStd++;
+      if (X.carryPaid[f] > 0) anyPaid++;
+      eStd += X.carryStd[f]; ePaid += X.carryPaid[f]; if (mOk) eMoneyOnly += X.carryStd[f];
+      if (mOk && iOk) q.both++; else if (mOk) q.moneyOnly++; else if (iOk) q.impactOnly++; else q.neither++;
+    }
+    for (const k in q) q[k] /= nF;
+    return {
+      X, nF,
+      pMoney: money / nF, pImpact: impact / nF, pBoth: both / nF,
+      pAnyStd: anyStd / nF, pPays: anyPaid / nF,
+      pImpactGivenMoney: money ? both / money : NaN,
+      pImpactGivenNoMoney: nF - money ? (impact - both) / (nF - money) : NaN,
+      eCarryStd: eStd / nF, eCarryMoneyGate: eMoneyOnly / nF, eCarryPaid: ePaid / nF,
+      quad: q,
+      medTvpi: quantile(X.tvpiNet, 0.5), p75Tvpi: quantile(X.tvpiNet, 0.75),
+      p3x: X.tvpiNet.reduce((s, t) => s + (t >= 3 ? 1 : 0), 0) / nF,
+      medIm: quantile(X.im, 0.5)
+    };
+  }
+
+  // Fund mid-life check: today's score s0 with a share e of the target period gone.
+  // Assumes cumulative targets reached at an even pace, so the rest of the period adds
+  // (1 − e) × a fresh fund score drawn from the model.
+  function midLife(res, s0, e, hurdle) {
+    let ok = 0;
+    for (let f = 0; f < res.nF; f++) if (s0 + (1 - e) * res.X.im[f] >= hurdle) ok++;
+    return ok / res.nF;
+  }
+
+  const api = { rng, draw, drawKey, evaluate, gateShare, quantile, midLife, lnormFromRange };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.ImpactEngine = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  "use strict";
+  const BASE = { fundSize: 100, nCos: 30, fee: 2, carry: 20, post: 18, pFail: 55, recovery: 10,
+    revP10: 3, revP90: 60, multP10: 1.5, multP90: 8, rho: 0.5, vintage: 0.3, roundsMin: 1, roundsMax: 4, dilution: 18,
+    impP10: 0.25, impP90: 2.5, impRho: 0.6, failKeep: 30, pDrift: 10, cap: "0",
+    hurdle: 60, rule: "hard", money: 2, s0: 40, elapsed: 50 };
+  const PRESETS = {
+    base: { note: "A €100M seed / Series A fund of 30 deals, calibrated to European VC returns; impact moves with revenue (0.6).", ...BASE },
+    unlinked: { note: "Same fund, but a company's impact has nothing to do with how its business does.", ...BASE, impRho: 0 },
+    strict: { note: "The 80% hurdle from Rubio's main site instead of the 60% in its methodology.", ...BASE, hurdle: 80 },
+    capped: { note: "No company can score above 100% of target, as some EIF-model funds do.", ...BASE, cap: "1" }
+  };
+  const FIELDS = Object.keys(BASE);
+  const $ = id => document.getElementById(id);
+  const fmtP = (x, d = 0) => !isFinite(x) ? "n/a" : (100 * x).toFixed(d) + "%";
+  const fmtX = x => x.toFixed(2) + "×";
+  const fmtE = x => "€" + (x >= 10 ? x.toFixed(1) : x.toFixed(2)) + "M";
+
+  function loadPreset(key) {
+    const p = PRESETS[key];
+    FIELDS.forEach(f => { $(f).value = p[f]; });
+    $("preset-note").textContent = p.note;
+    schedule();
+  }
+
+  function readInputs() {
+    const v = {};
+    FIELDS.forEach(f => { v[f] = (f === "cap" || f === "rule") ? $(f).value : parseFloat($(f).value); });
+    const blank = FIELDS.find(f => f !== "cap" && f !== "rule" && !isFinite(v[f]));
+    if (blank) return { error: "One of the inputs is empty or not a number." };
+    const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+    if (!(v.revP90 > v.revP10 && v.revP10 > 0)) return { error: "Exit-year revenue: the P90 must be above the P10, and both above zero." };
+    if (!(v.multP90 > v.multP10 && v.multP10 > 0)) return { error: "Exit multiple: the P90 must be above the P10, and both above zero." };
+    if (!(v.impP90 > v.impP10 && v.impP10 > 0)) return { error: "KPI achievement: the P90 must be above the P10, and both above zero." };
+    const nCos = Math.round(clamp(v.nCos, 5, 60));
+    const feeRate = clamp(v.fee, 0, 3) / 100;
+    const cheque = v.fundSize * (1 - feeRate * 10) / nCos;
+    if (!(v.post > cheque)) return { error: "The entry post-money must be larger than each cheque (" + fmtE(cheque) + ")." };
+    const D = { nFunds: 20000, nCos, recoveryMean: clamp(v.recovery, 1, 90) / 100,
+      roundsMin: Math.round(clamp(Math.min(v.roundsMin, v.roundsMax), 0, 10)),
+      roundsMax: Math.round(clamp(Math.max(v.roundsMin, v.roundsMax), 0, 10)),
+      dilutionMean: clamp(v.dilution, 1, 60) / 100, seed: 42 };
+    const P = { fundSize: Math.max(5, v.fundSize), feeRate, feeYears: 10, carry: clamp(v.carry, 0, 40) / 100,
+      post: v.post, pFail: clamp(v.pFail, 0, 95) / 100, revP10: v.revP10, revP90: v.revP90,
+      multP10: v.multP10, multP90: v.multP90, rho: clamp(v.rho, -0.9, 0.9), vintage: clamp(v.vintage, 0, 0.9),
+      impP10: v.impP10, impP90: v.impP90, impRho: clamp(v.impRho, 0, 0.95), failKeep: clamp(v.failKeep, 0, 100) / 100,
+      pDrift: clamp(v.pDrift, 0, 100) / 100, driftCut: 0.5, cap: v.cap === "1",
+      hurdle: clamp(v.hurdle, 5, 200) / 100, rule: v.rule, moneyHurdle: clamp(v.money, 0.5, 6) };
+    return { D, P, cheque, s0: clamp(v.s0, 0, 300) / 100, elapsed: clamp(v.elapsed, 0, 95) / 100 };
+  }
+
+  let timer = null, R = null;
+  function schedule() { $("results").classList.add("busy"); clearTimeout(timer); timer = setTimeout(run, 180); }
+  function run() {
+    try { runModel(); }
+    catch (err) { $("results").classList.remove("busy"); $("verdict").textContent = "Something went wrong running the model.";
+      $("verdict-sub").textContent = String(err && err.message || err); }
+  }
+
+  function runModel() {
+    const inp = readInputs();
+    $("results").classList.remove("busy");
+    if (inp.error) { $("verdict").textContent = "Check the inputs."; $("verdict-sub").textContent = inp.error; return; }
+    const { D, P } = inp;
+    if (!R || R.key !== ImpactEngine.drawKey(D)) R = ImpactEngine.draw(D);
+    const r = ImpactEngine.evaluate(R, P);
+    const ruleName = { hard: "", bands: " (on EIF bands, some of it)", prorata: " (pro rata, some of it)" }[P.rule];
+
+    $("verdict").innerHTML = `Under these assumptions, the carry pays out in <em>${fmtP(r.pPays)} of funds</em>${ruleName}.`;
+    const normalPays = r.pAnyStd;
+    $("verdict-sub").textContent = `A normal fund with the same deals pays some carry ${fmtP(normalPays)} of the time. ` +
+      `The ${fmtX(P.moneyHurdle).replace(".00", "")} money hurdle cuts that to ${fmtP(r.pMoney)}; the impact gate takes it to ${fmtP(r.pPays)}. ` +
+      (r.pImpactGivenMoney >= 0.8 ? "Most funds that make the money also make the impact, so the impact gate costs the team little."
+        : r.pImpactGivenMoney >= 0.5 ? "The impact gate bites: a real share of financially successful funds still miss their targets."
+        : "The impact gate dominates: most financially successful funds still miss their impact targets.");
+
+    $("t-pays").textContent = fmtP(r.pPays);
+    $("t-money").textContent = fmtP(r.pMoney);
+    $("t-impact").textContent = fmtP(r.pImpact);
+    $("t-impact-s").textContent = "fund score ≥ " + fmtP(P.hurdle) + "; median " + fmtP(r.medIm);
+    $("t-align").textContent = fmtP(r.pImpactGivenMoney);
+    $("t-align-s").textContent = "vs " + fmtP(r.pImpactGivenNoMoney) + " when the money misses";
+    $("t-carry").textContent = fmtE(r.eCarryPaid);
+    $("t-carry-s").textContent = "vs " + fmtE(r.eCarryStd) + " in a normal fund (" + fmtP(r.eCarryStd ? 1 - r.eCarryPaid / r.eCarryStd : 0) + " less)";
+    $("t-tvpi").textContent = fmtX(r.medTvpi);
+
+    drawScatter(r, P);
+    drawBridge(r);
+    drawTornado(P, r.pPays);
+    const ml = ImpactEngine.midLife(r, inp.s0, inp.elapsed, P.hurdle);
+    $("midlife").innerHTML = `<p>A fund scoring <strong>${fmtP(inp.s0)}</strong> with <strong>${fmtP(inp.elapsed)}</strong> of its target period gone ` +
+      `reaches the ${fmtP(P.hurdle)} hurdle in <strong style="color:var(--accent)">${fmtP(ml)}</strong> of simulated futures.</p>` +
+      `<p class="note">It needs another ${fmtP(Math.max(0, P.hurdle - inp.s0))} from the remaining ${fmtP(1 - inp.elapsed)} of the period, ` +
+      `so it must deliver ${fmtP(Math.max(0, P.hurdle - inp.s0) / (1 - inp.elapsed))} of target from here on. The model's typical fund delivers ${fmtP(r.medIm)}. ` +
+      `So far this fund has delivered ${fmtP(inp.elapsed > 0 ? inp.s0 / inp.elapsed : NaN)} of target${inp.elapsed > 0 && inp.s0 / inp.elapsed < r.medIm ? ", below the model's typical fund, so treat the answer as optimistic" : ""}.</p>`;
+
+    const rows = [
+      ["Median net TVPI", fmtX(r.medTvpi), "1.76×", "Carta, 2017 vintage, Q3 2025", "https://carta.com/data/vc-fund-performance-q3-2025-full-report/"],
+      ["75th percentile net TVPI", fmtX(r.p75Tvpi), "2.27×", "Carta, 2017 vintage, Q3 2025", "https://carta.com/data/vc-fund-performance-q3-2025-full-report/"],
+      ["Share of funds at 3× or more", fmtP(r.p3x), "14%", "British Business Bank, rest-of-Europe VC, 2025", "https://www.crowdfundinsider.com/2025/12/256220-report-uk-vc-market-compares-favorably-to-eu-us/"]
+    ];
+    $("bench").innerHTML = rows.map(([m, a, b, s, u]) => `<tr><td>${m}</td><td class="num">${a}</td><td class="num">${b}</td><td><a href="${u}">${s}</a></td></tr>`).join("");
+  }
+
+  // ---- charts (plain SVG) ----
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent, text) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    parent.appendChild(e); return e;
+  }
+
+  function drawScatter(r, P) {
+    const svg = $("scatter"); svg.innerHTML = "";
+    const W = 760, H = 420, L = 52, Rm = 16, T = 16, B = 40;
+    const xmax = 5, ymax = Math.max(2, Math.ceil(P.hurdle * 2 * 2) / 2);
+    const x = v => L + Math.min(v, xmax) / xmax * (W - L - Rm);
+    const y = v => H - B - Math.min(v, ymax) / ymax * (H - T - B);
+    // quadrant shading: carry box
+    el("rect", { x: x(P.moneyHurdle), y: y(ymax), width: x(xmax) - x(P.moneyHurdle), height: y(P.hurdle) - y(ymax), fill: "#f4e9ea" }, svg);
+    // grid
+    for (let v = 0; v <= ymax + 1e-9; v += 0.5) {
+      el("line", { x1: L, x2: W - Rm, y1: y(v), y2: y(v), stroke: v === 0 ? "#111" : "#ececec" }, svg);
+      el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg, (100 * v).toFixed(0) + "%");
+    }
+    for (let v = 0; v <= xmax; v += 1) {
+      el("line", { x1: x(v), x2: x(v), y1: H - B, y2: H - B + 4, stroke: "#111" }, svg);
+      el("text", { x: x(v), y: H - B + 18, "text-anchor": "middle" }, svg, v === xmax ? "5×+" : v + "×");
+    }
+    // dots
+    const X = r.X, n = Math.min(2500, r.nF);
+    const gGrey = el("g", { fill: "#a9a9a9", "fill-opacity": 0.45 }, svg), gRed = el("g", { fill: "#7a1f2b", "fill-opacity": 0.7 }, svg);
+    for (let f = 0; f < n; f++) {
+      const paid = X.carryPaid[f] > 0;
+      el("circle", { cx: x(X.tvpiNet[f]).toFixed(1), cy: y(X.im[f]).toFixed(1), r: 2.1 }, paid ? gRed : gGrey);
+    }
+    // gate lines
+    el("line", { x1: x(P.moneyHurdle), x2: x(P.moneyHurdle), y1: T, y2: H - B, stroke: "#111", "stroke-dasharray": "4 3" }, svg);
+    el("line", { x1: L, x2: W - Rm, y1: y(P.hurdle), y2: y(P.hurdle), stroke: "#111", "stroke-dasharray": "4 3" }, svg);
+    // quadrant labels with shares
+    const q = r.quad, lab = (tx, ty, anchor, share, words, color) => {
+      el("text", { x: tx, y: ty, "text-anchor": anchor, class: "big", style: color ? "fill:" + color : "" }, svg, fmtP(share));
+      el("text", { x: tx, y: ty + 16, "text-anchor": anchor, class: "lbl" }, svg, words);
+    };
+    lab(W - Rm - 10, T + 26, "end", q.both, "both gates: carry paid", "#7a1f2b");
+    lab(L + 10, T + 26, "start", q.impactOnly, "impact only");
+    lab(W - Rm - 10, H - B - 30, "end", q.moneyOnly, "money only");
+    lab(L + 10, H - B - 30, "start", q.neither, "neither");
+    el("text", { x: (L + W - Rm) / 2, y: H - 4, "text-anchor": "middle" }, svg, "Net TVPI: money returned to investors per €1 paid in, after fees and carry");
+    el("text", { x: 12, y: (T + H - B) / 2, "text-anchor": "middle", transform: `rotate(-90 12 ${(T + H - B) / 2})` }, svg, "Fund impact score (% of targets)");
+  }
+
+  function drawBridge(r) {
+    const svg = $("bridge"); svg.innerHTML = "";
+    const W = 760, L = 210, Rm = 90, rows = [
+      ["Normal fund", r.eCarryStd, "#c9c9c9"],
+      ["After the money gate", r.eCarryMoneyGate, "#7a7a7a"],
+      ["After the impact gate", r.eCarryPaid, "#7a1f2b"]];
+    const max = Math.max(r.eCarryStd, 1e-9), x = v => L + v / max * (W - L - Rm);
+    rows.forEach(([name, v, c], i) => {
+      const yy = 20 + i * 52;
+      el("text", { x: L - 12, y: yy + 19, "text-anchor": "end", class: "lbl" }, svg, name);
+      el("rect", { x: L, y: yy, width: Math.max(1, x(v) - L), height: 28, fill: c }, svg);
+      el("text", { x: x(v) + 8, y: yy + 19, class: "lbl" }, svg, fmtE(v));
+    });
+    el("line", { x1: L, x2: L, y1: 12, y2: 176, stroke: "#111" }, svg);
+  }
+
+  // Tornado: one input at a time, on the same random draws
+  function drawTornado(P, basePays) {
+    const items = [
+      ["Impact ↔ revenue link", "0", "0.9", { impRho: 0 }, { impRho: 0.9 }],
+      ["Impact hurdle", fmtP(Math.max(0.05, P.hurdle - 0.2)), fmtP(P.hurdle + 0.2), { hurdle: Math.max(0.05, P.hurdle - 0.2) }, { hurdle: P.hurdle + 0.2 }],
+      ["Impact kept if a company fails", "0%", "60%", { failKeep: 0 }, { failKeep: 0.6 }],
+      ["KPI achievement (P10 and P90)", "×0.8", "×1.2", { impP10: P.impP10 * 0.8, impP90: P.impP90 * 0.8 }, { impP10: P.impP10 * 1.2, impP90: P.impP90 * 1.2 }],
+      ["KPI turns out wrong", "0%", "25%", { pDrift: 0 }, { pDrift: 0.25 }],
+      ["Cap per company", "no cap", "cap at 100%", { cap: false }, { cap: true }],
+      ["Chance of failure", fmtP(Math.max(0, P.pFail - 0.1)), fmtP(Math.min(0.95, P.pFail + 0.1)), { pFail: Math.max(0, P.pFail - 0.1) }, { pFail: Math.min(0.95, P.pFail + 0.1) }],
+      ["Entry post-money", fmtE(P.post * 0.8), fmtE(P.post * 1.2), { post: P.post * 0.8 }, { post: P.post * 1.2 }],
+      ["Money hurdle", fmtX(Math.max(0.5, P.moneyHurdle - 0.5)), fmtX(P.moneyHurdle + 0.5), { moneyHurdle: Math.max(0.5, P.moneyHurdle - 0.5) }, { moneyHurdle: P.moneyHurdle + 0.5 }]
+    ].map(([name, lo, hi, a, b]) => ({ name, lo, hi, a: ImpactEngine.evaluate(R, { ...P, ...a }).pPays, b: ImpactEngine.evaluate(R, { ...P, ...b }).pPays }))
+     .sort((u, v) => Math.abs(v.b - v.a) - Math.abs(u.b - u.a));
+    const svg = $("tornado"); svg.innerHTML = "";
+    const W = 760, L = 230, Rm = 70, T = 30, rowH = 34, H = T + items.length * rowH + 30;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const lo = Math.min(0, ...items.map(i => Math.min(i.a, i.b))), hi = Math.max(...items.map(i => Math.max(i.a, i.b)), basePays + 0.05);
+    const x = v => L + 64 + (v - lo) / (hi - lo) * (W - L - 64 - Rm);
+    for (let v = 0; v <= hi + 1e-9; v += 0.1) {
+      el("line", { x1: x(v), x2: x(v), y1: T - 6, y2: H - 30, stroke: "#ececec" }, svg);
+      el("text", { x: x(v), y: H - 12, "text-anchor": "middle" }, svg, fmtP(v));
+    }
+    items.forEach((it, k) => {
+      const yy = T + k * rowH;
+      el("text", { x: L - 12, y: yy + 16, "text-anchor": "end", class: "lbl" }, svg, it.name);
+      const x0 = x(Math.min(it.a, it.b)), x1 = x(Math.max(it.a, it.b));
+      el("rect", { x: x0, y: yy + 4, width: Math.max(1.5, x1 - x0), height: 18, fill: "#111", "fill-opacity": 0.14, stroke: "#111", "stroke-width": 0.75 }, svg);
+      // end labels: the input value that produced each end
+      const left = it.a <= it.b ? it.lo : it.hi, right = it.a <= it.b ? it.hi : it.lo;
+      el("text", { x: x0 - 5, y: yy + 17, "text-anchor": "end" }, svg, left);
+      el("text", { x: x1 + 5, y: yy + 17 }, svg, right);
+    });
+    el("line", { x1: x(basePays), x2: x(basePays), y1: T - 10, y2: H - 30, stroke: "#7a1f2b", "stroke-width": 2 }, svg);
+    el("text", { x: x(basePays) + 6, y: T - 14, class: "lbl", style: "fill:#7a1f2b" }, svg, "as set: " + fmtP(basePays));
+  }
+
+  FIELDS.forEach(f => $(f).addEventListener("input", () => { $("preset-note").textContent = "Custom inputs."; schedule(); }));
+  $("preset").addEventListener("change", e => loadPreset(e.target.value));
+  loadPreset("base");
+})();
+</script>
+</body>
+</html>
